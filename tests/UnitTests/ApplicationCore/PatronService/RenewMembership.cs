@@ -139,4 +139,20 @@ public class RenewMembershipTest
         // Assert
         Assert.Equal(MembershipRenewalStatus.LoanNotReturned, renewalStatus);
     }
+
+    [Fact(DisplayName = "PatronService.RenewMembership: Returns Error if repository throws an exception")]
+    public async Task RenewMembership_ReturnsErrorOnRepositoryFailure()
+    {
+        // Arrange
+        var patron = PatronFactory.CreateCurrentPatron();
+        var patronId = patron.Id;
+        _mockPatronRepository.GetPatron(patronId).Returns(patron);
+        _mockPatronRepository.UpdatePatron(patron).Returns(Task.FromException(new Exception("Repository error")));
+
+        // Act
+        MembershipRenewalStatus renewalStatus = await _patronService.RenewMembership(patronId);
+
+        // Assert
+        Assert.Equal(MembershipRenewalStatus.Error, renewalStatus);
+    }
 }
