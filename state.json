@@ -1,28 +1,37 @@
 {
-  "last_run": "2026-07-03T04:45:52Z",
-  "last_run_id": "28638965137",
+  "last_run": "2026-07-03T05:00:00Z",
+  "last_run_id": "28639415566",
   "monthly_summary_issue": "2026-07",
   "open_prs": [
     {
-      "branch": "repo-assist/testing-improve-error-cases",
+      "branch": "repo-assist/testing-improve-error-cases-9737b66a0213ffd8",
       "title": "test: add Error case tests for LoanService and PatronService",
       "task": 9,
-      "status": "open"
+      "status": "open_as_issue",
+      "issue": 2
     },
     {
-      "branch": "repo-assist/improve-fix-unused-exception-vars",
+      "branch": "repo-assist/improve-fix-unused-exception-vars-a936090bb4769215",
       "title": "fix: remove unused exception variables in service catch blocks",
       "task": 5,
-      "status": "open"
+      "status": "open_as_issue",
+      "issue": 3
     },
     {
-      "branch": "repo-assist/eng-add-ci-workflow-2026-07-03",
+      "branch": "repo-assist/eng-add-ci-workflow-2026-07-03-e4cb52d7d4d6adea",
       "title": "ci: add .NET build and test workflow",
       "task": 4,
-      "status": "open"
+      "status": "open_as_issue",
+      "issue": 4
+    },
+    {
+      "branch": "repo-assist/improve-patron-search-2026-07-03",
+      "title": "fix: case-insensitive patron search and nullable fixes in JsonPatronRepository",
+      "task": 5,
+      "status": "pr_submitted"
     }
   ],
   "comments_made": [],
   "issue_backlog_cursor": null,
-  "notes": "First run. No open issues in repo. Created 3 PRs: error-case tests, unused exception var fix, CI workflow."
+  "notes": "Second run. No user-filed issues. Created PR for case-insensitive search + nullable fixes in JsonPatronRepository. Remaining warnings: CS0168 in LoanService (has pending branch), CS8602/CS8601 in ConsoleApp.cs. Future work: readonly _loanRepository, ConsoleApp nullable fixes."
 }
