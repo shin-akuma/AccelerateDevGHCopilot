@@ -14,7 +14,7 @@ description: |
   Always polite, constructive, and mindful of the project's goals.
 
 on:
-  schedule: every 12h
+  # schedule: every 12h  # disabled — trigger manually via workflow_dispatch or /repo-assist
   workflow_dispatch:
     inputs:
       command:
