@@ -38,7 +38,7 @@ on:
 
 if: needs.pre_activation.outputs.check_result == 'success'
 
-timeout-minutes: 60
+timeout-minutes: 20
 
 permissions: read-all
 
@@ -102,17 +102,33 @@ safe-outputs:
     target: "*" 
 
 steps:
+  - name: Check memory size
+    run: |
+      MEMORY_DIR="/tmp/gh-aw/repo-memory/default"
+      if [ -d "$MEMORY_DIR" ]; then
+        TOTAL_LINES=$(find "$MEMORY_DIR" -name '*.md' -o -name '*.json' | xargs wc -l 2>/dev/null | tail -1 | awk '{print $1}')
+        TOTAL_BYTES=$(du -sb "$MEMORY_DIR" 2>/dev/null | awk '{print $1}')
+        echo "=== Repo Memory Size ==="
+        echo "Total lines : ${TOTAL_LINES:-0}"
+        echo "Total bytes : ${TOTAL_BYTES:-0}"
+        if [ "${TOTAL_LINES:-0}" -gt 300 ]; then
+          echo "WARNING: Memory exceeds 300 lines — compaction recommended."
+        fi
+      else
+        echo "Memory directory not yet initialised."
+      fi
+
   - name: Fetch repo data for task weighting
     env:
       GH_TOKEN: ${{ github.token }}
     run: |
       mkdir -p /tmp/gh-aw
 
-      # Fetch open issues with labels (up to 500)
-      gh issue list --state open --limit 500 --json number,labels > /tmp/gh-aw/issues.json
+      # Fetch open issues with labels (up to 100)
+      gh issue list --state open --limit 100 --json number,labels > /tmp/gh-aw/issues.json
 
-      # Fetch open PRs with titles (up to 200)
-      gh pr list --state open --limit 200 --json number,title > /tmp/gh-aw/prs.json
+      # Fetch open PRs with titles (up to 50)
+      gh pr list --state open --limit 50 --json number,title > /tmp/gh-aw/prs.json
 
       # Compute task weights and select three tasks for this run
       python3 - << 'EOF'
@@ -142,16 +158,16 @@ steps:
       }
 
       weights = {
-          1:  1   + 3 * unlabelled,
-          2:  3   + 1 * open_issues,
-          3:  3   + 0.7 * open_issues,
+          1:  1   + 3 * unlabelled,      # cheap: short outputs, no codebase read
+          2:  3   + 1 * open_issues,      # medium: reads issue threads
+          3:  3   + 0.7 * open_issues,    # expensive: reads code + writes PRs
           4:  5   + 0.2 * open_issues,
-          5:  5   + 0.1 * open_issues,
+          5:  2   + 0.05 * open_issues,   # reduced: unbounded codebase scan
           6:  float(repo_assist_prs),
-          7:  0.1 * other_prs,
-          8:  3   + 0.05 * open_issues,
+          7:  0.1 * other_prs,            # cheap: short nudge comments
+          8:  1   + 0.02 * open_issues,   # reduced: deep analysis
           9:  3   + 0.05 * open_issues,
-          10: 3   + 0.05 * open_issues,
+          10: 1   + 0.02 * open_issues,   # reduced: open-ended, most expensive
       }
 
       # Seed with run ID for reproducibility within a run
@@ -162,6 +178,8 @@ steps:
       task_weights = [weights[t] for t in task_ids]
 
       # Weighted sample without replacement (pick 3 distinct tasks)
+      # NOTE: cold-start cache cost (~33 credits) is fixed per run regardless of task count.
+      # Running more tasks per run amortises that overhead — do not reduce below 3.
       NUM_TASKS_PER_RUN = 3
       chosen, seen = [], set()
       for t in rng.choices(task_ids, weights=task_weights, k=30):
@@ -206,6 +224,14 @@ Take heed of **instructions**: "${{ steps.sanitized.outputs.text || inputs.comma
 
 If these are non-empty (not ""), then you have been triggered via `/repo-assist <instructions>` (or by the user setting `inputs.command` in a manual `workflow_dispatch`). Follow the user's instructions instead of the normal scheduled workflow. Focus exclusively on those instructions. Apply all the same guidelines (read AGENTS.md, run formatters/linters/tests, be polite, use AI disclosure). Skip the weighted task selection and Task 11 reporting, and instead directly do what the user requested. If no specific instructions were provided (empty or blank), proceed with the normal scheduled workflow below.
 
+**Special command — `compress memory`**: If the instructions are "compress memory" (case-insensitive), perform a full memory compaction pass and nothing else:
+1. Read all memory files and count total lines before compaction.
+2. Delete any entries for issues or PRs that are now closed or merged (verify via GitHub API).
+3. Collapse per-issue comment history older than 30 days into: `#<N>: last commented <date>, status: <open|closed>`.
+4. Collapse run history entries older than the current month into one line: `Prior to {YYYY-MM}: {N} runs completed, {M} PRs created, {K} comments made`.
+5. Remove any duplicate or redundant backlog cursor entries.
+6. Write the compacted files back to memory. Log before/after line counts to stdout.
+
 Then exit  -  do not run the normal workflow after completing the instructions.
 
 ## Non-Command Mode
@@ -230,6 +256,14 @@ Use persistent repo memory to track:
 - previously checked off items (checked off by maintainer) in the Monthly Activity Summary to maintain an accurate pending actions list for maintainers
 
 Read memory at the **start** of every run; update it at the **end**.
+
+**Memory size discipline**: Keep total memory under 400 lines. Summarise older run history into a single line per month rather than keeping per-run detail. Remove resolved issues, merged PRs, and completed backlog items promptly — do not let memory grow unbounded, as it adds to the token cost of every future run.
+
+**Periodic compaction**: Every 10th run (track a `run_count` in memory), perform a full memory compaction pass regardless of current size:
+- Merge all per-issue comment history older than 30 days into a single summary line per issue
+- Delete entries for issues/PRs that are now closed or merged
+- Collapse run history older than the current month into one line: `Prior to {YYYY-MM}: {N} runs completed`
+- After compaction, log the before/after line count in the Task 11 run history entry
 
 **Important**: Memory may not be 100% accurate. Issues may have been created, closed, or commented on; PRs may have been created, merged, commented on, or closed since the last run. Always verify memory against current repository state — reviewing recent activity since your last run is wise before acting on stale assumptions.
 
@@ -280,6 +314,7 @@ Update memory with labels applied and cursor position.
 2. **Prioritise issues that have never received a Repo Assist comment.** Read the issue comments and check memory's `comments_made` field. Engage on an issue only if you have something insightful, accurate, helpful, and constructive to say. Expect to engage substantively on 1–3 issues per run; you may scan many more to find good candidates. Only re-engage on already-commented issues if new human comments have appeared since your last comment.
 3. Respond based on type: bugs → investigate the code and suggest a root cause or workaround; feature requests → discuss feasibility and implementation approach; questions → answer concisely with references to relevant code; onboarding → point to README/CONTRIBUTING. Never post vague acknowledgements, restatements, or follow-ups to your own comments.
 4. Begin every comment with: `🤖 *This is an automated response from Repo Assist.*`
+   **Keep comments under 150 words.** Link to relevant code lines rather than quoting them inline.
 5. Update memory with comments made and the new cursor position.
 
 ### Task 3: Issue Investigation and Fix
@@ -293,7 +328,7 @@ Update memory with labels applied and cursor position.
    c. Implement a minimal, surgical fix. Do not refactor unrelated code.
    d. **Build and test (required)**: do not create a PR if the build fails or tests fail due to your changes. If tests fail due to infrastructure, create the PR but document it.
    e. Add a test for the bug if feasible; re-run tests.
-   f. Create a draft PR with: AI disclosure, `Closes #N`, root cause, fix rationale, trade-offs, and a Test Status section showing build/test outcome.
+   f. Create a draft PR with: AI disclosure, `Closes #N`, root cause, fix rationale, trade-offs, and a Test Status section showing build/test outcome. **Keep PR descriptions under 300 words** — be direct, avoid restating the issue at length.
    g. Post a single brief comment on the issue linking to the PR.
 3. Update memory with fix attempts and outcomes.
 
