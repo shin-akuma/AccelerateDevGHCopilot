@@ -9,7 +9,6 @@ permissions:
   contents: read
   actions: read
   security-events: read
-  issues: write   # allow no-op transparency issue on clean runs
 
 tracker-id: malicious-code-scan
 
@@ -22,6 +21,10 @@ safe-outputs:
   create-code-scanning-alert:
     driver: "Malicious Code Scanner"
   threat-detection: false
+  create-issue:
+    title-prefix: "[malicious-code-scan] "
+    labels: [security, malicious-code-scan]
+    max: 1
 
 source: githubnext/agentics/workflows/malicious-code-scan.md@1c6668b751c51af8571f01204ceffb19362e0f66
 ---
