@@ -9,6 +9,7 @@ permissions:
   contents: read
   actions: read
   security-events: read
+  issues: write   # allow no-op transparency issue on clean runs
 
 tracker-id: malicious-code-scan
 
