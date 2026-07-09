@@ -26,10 +26,10 @@ public class PatronService : IPatronService
             return MembershipRenewalStatus.LoanNotReturned;
 
         patron.MembershipEnd = patron.MembershipEnd.AddYears(1);
-        try{
+        try {
             await _patronRepository.UpdatePatron(patron);
             return MembershipRenewalStatus.Success;
-        } catch (Exception e) {
+        } catch (Exception) {
             return MembershipRenewalStatus.Error;
         }
     }
