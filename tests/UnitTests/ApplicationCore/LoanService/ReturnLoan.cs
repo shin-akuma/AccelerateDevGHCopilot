@@ -96,4 +96,21 @@ public class ReturnLoanTest
         Assert.Equal(LoanReturnStatus.Success, returnStatus);
         Assert.NotNull(loan.ReturnDate);
     }
+
+    [Fact(DisplayName = "LoanService.ReturnLoan: Returns Error if repository throws an exception")]
+    public async Task ReturnLoan_ReturnsErrorOnRepositoryFailure()
+    {
+        // Arrange
+        var patron = PatronFactory.CreateCurrentPatron();
+        var loan = LoanFactory.CreateCurrentLoanForPatron(patron);
+        var loanId = loan.Id;
+        _mockLoanRepository.GetLoan(loanId).Returns(loan);
+        _mockLoanRepository.UpdateLoan(loan).Returns(Task.FromException(new Exception("Repository error")));
+
+        // Act
+        LoanReturnStatus returnStatus = await _loanService.ReturnLoan(loanId);
+
+        // Assert
+        Assert.Equal(LoanReturnStatus.Error, returnStatus);
+    }
 }

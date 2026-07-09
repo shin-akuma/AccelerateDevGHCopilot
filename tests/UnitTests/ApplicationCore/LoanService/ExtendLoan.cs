@@ -101,4 +101,21 @@ public class ExtendLoanTest
         Assert.Equal(LoanExtensionStatus.LoanExpired, extensionStatus);
         Assert.Equal(loanDueDate, loan.DueDate);
     }
+
+    [Fact(DisplayName = "LoanService.ExtendLoan: Returns Error if repository throws an exception")]
+    public async Task ExtendLoan_ReturnsErrorOnRepositoryFailure()
+    {
+        // Arrange
+        var patron = PatronFactory.CreateCurrentPatron();
+        var loan = LoanFactory.CreateCurrentLoanForPatron(patron);
+        var loanId = loan.Id;
+        _mockLoanRepository.GetLoan(loanId).Returns(loan);
+        _mockLoanRepository.UpdateLoan(loan).Returns(Task.FromException(new Exception("Repository error")));
+
+        // Act
+        LoanExtensionStatus extensionStatus = await _loanService.ExtendLoan(loanId);
+
+        // Assert
+        Assert.Equal(LoanExtensionStatus.Error, extensionStatus);
+    }
 }
