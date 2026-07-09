@@ -1,4 +1,4 @@
-name: Verify agentic lock files
+name: Agentic lock files
 
 on:
   pull_request:
@@ -9,14 +9,60 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/*.md'
-      - '.github/workflows/*.lock.yml'
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  # On PRs: recompile and push the regenerated lock files back onto the PR branch.
+  # Same-repo PRs get an auto-commit; fork PRs (read-only token, can't push to the
+  # fork) fall back to failing so the contributor recompiles locally.
+  compile-pr:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push the regenerated lock files to the PR branch
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          # For same-repo PRs this checks out the PR branch so we can push back.
+          persist-credentials: true
+
+      - name: Install gh-aw (pinned)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh extension install github/gh-aw --pin v0.81.6
+
+      - name: Recompile all workflows
+        run: gh aw compile
+
+      - name: Commit regenerated lock files to PR (same-repo only)
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if ! git diff --quiet -- '.github/workflows/*.lock.yml'; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .github/workflows/*.lock.yml
+            git commit -m "chore: recompile agentic lock files [skip ci]"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
+
+      - name: Fail if fork PR has stale lock files
+        if: github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          if ! git diff --exit-code -- '.github/workflows/*.lock.yml'; then
+            echo "::error::Lock files are out of date. Run 'gh aw compile' locally and commit the result (auto-commit is not available for fork PRs)."
+            exit 1
+          fi
+
+  # On direct pushes to main: recompile and auto-commit any drift as a safety net.
+  recompile:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to push regenerated lock files
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,9 +75,12 @@ jobs:
       - name: Recompile all workflows
         run: gh aw compile
 
-      - name: Fail if lock files are stale
+      - name: Commit regenerated lock files
         run: |
-          if ! git diff --exit-code -- '.github/workflows/*.lock.yml'; then
-            echo "::error::Lock files are out of date. Run 'gh aw compile' locally and commit the result."
-            exit 1
+          if ! git diff --quiet -- '.github/workflows/*.lock.yml'; then
+            git config user.name  "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add .github/workflows/*.lock.yml
+            git commit -m "chore: recompile agentic lock files [skip ci]"
+            git push
           fi
