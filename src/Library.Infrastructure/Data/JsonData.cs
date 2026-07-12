@@ -18,6 +18,12 @@ public class JsonData
     private readonly string _patronsPath;
     private readonly string _loansPath;
 
+    private Dictionary<int, Author>? _authorsById;
+    private Dictionary<int, Book>? _booksById;
+    private Dictionary<int, BookItem>? _bookItemsById;
+    private Dictionary<int, Patron>? _patronsById;
+    private ILookup<int, Loan>? _loansByPatronId;
+
     public JsonData(IConfiguration configuration)
     {
         var section = configuration.GetSection("JsonPaths");
@@ -43,6 +49,12 @@ public class JsonData
         BookItems = await LoadJson<List<BookItem>>(_bookItemsPath);
         Patrons = await LoadJson<List<Patron>>(_patronsPath);
         Loans = await LoadJson<List<Loan>>(_loansPath);
+
+        _authorsById = Authors!.ToDictionary(a => a.Id);
+        _booksById = Books!.ToDictionary(b => b.Id);
+        _bookItemsById = BookItems!.ToDictionary(bi => bi.Id);
+        _patronsById = Patrons!.ToDictionary(p => p.Id);
+        _loansByPatronId = Loans!.ToLookup(l => l.PatronId);
     }
 
     public async Task SaveLoans(IEnumerable<Loan> loans)
@@ -107,12 +119,9 @@ public class JsonData
             Loans = new List<Loan>()
         };
 
-        foreach (Loan loan in Loans!)
+        foreach (Loan loan in _loansByPatronId![p.Id])
         {
-            if (loan.PatronId == p.Id)
-            {
-                populated.Loans.Add(GetPopulatedLoan(loan));
-            }
+            populated.Loans.Add(GetPopulatedLoan(loan));
         }
 
         return populated;
@@ -130,22 +139,14 @@ public class JsonData
             ReturnDate = l.ReturnDate
         };
 
-        foreach (BookItem bi in BookItems!)
+        if (_bookItemsById!.TryGetValue(l.BookItemId, out BookItem? bi))
         {
-            if (bi.Id == l.BookItemId)
-            {
-                populated.BookItem = GetPopulatedBookItem(bi);
-                break;
-            }
+            populated.BookItem = GetPopulatedBookItem(bi);
         }
 
-        foreach (Patron p in Patrons!)
+        if (_patronsById!.TryGetValue(l.PatronId, out Patron? patron))
         {
-            if (p.Id == l.PatronId)
-            {
-                populated.Patron = p;
-                break;
-            }
+            populated.Patron = patron;
         }
 
         return populated;
@@ -161,13 +162,9 @@ public class JsonData
             Condition = bi.Condition
         };
 
-        foreach (Book b in Books!)
+        if (_booksById!.TryGetValue(bi.BookId, out Book? book))
         {
-            if (b.Id == bi.BookId)
-            {
-                populated.Book = GetPopulatedBook(b);
-                break;
-            }
+            populated.Book = GetPopulatedBook(book);
         }
 
         return populated;
@@ -185,17 +182,13 @@ public class JsonData
             ImageName = b.ImageName
         };
 
-        foreach (Author a in Authors!)
+        if (_authorsById!.TryGetValue(b.AuthorId, out Author? author))
         {
-            if (a.Id == b.AuthorId)
+            populated.Author = new Author
             {
-                populated.Author = new Author
-                {
-                    Id = a.Id,
-                    Name = a.Name
-                };
-                break;
-            }
+                Id = author.Id,
+                Name = author.Name
+            };
         }
 
         return populated;
